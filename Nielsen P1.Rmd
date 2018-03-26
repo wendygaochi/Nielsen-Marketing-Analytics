@@ -1,0 +1,865 @@
+---
+`title: "Nielsen Part2"
+author: "Weijie Gao"
+date: "May 20, 2017"
+output: html_document
+---
+
+## Read the data, 2012 Nielsen Dataset
+# Define the datapath
+```{r}
+datapath<-"C:/Users/AA/Google Drive/UChicago MscA_/Marketing Analytics/Course Project/Nielsen/2012/"
+```
+
+
+# Read panelist dataset
+```{r}
+panelists_2012 <- read.delim(file=paste(datapath,'panelists_2012.tsv',sep='/'),
+                        header=TRUE, sep = "\t")
+
+head(panelists_2012)
+dim(panelists_2012)
+names(panelists_2012)
+```
+
+# LCA Analysis based on Panelist Data
+```{r}
+library(poLCA)
+library(caret)
+
+# Columns selected for segmentation analysis
+
+panelist.lca.data <- panelists_2012[,c(5,6,7,8,9,10,11,12,13,24,33,34,35)]
+attach(panelist.lca.data)
+names(panelist.lca.data)
+
+panelist.lca.data$female_head_age_1 <- panelist.lca.data$female_head_age+1
+panelist.lca.data$male_head_age_1 <- panelist.lca.data$male_head_age+1
+panelist.lca.data$female_head_employment_1 <- panelist.lca.data$female_head_employment+1
+panelist.lca.data$male_head_employment_1 <- panelist.lca.data$male_head_employment+1
+
+
+# split data (train & test) 
+set.seed(123) 
+my.index<-createDataPartition(panelist.lca.data[, 1], p=0.7, times=1, list=FALSE) 
+
+panelist.lca.train.data<-panelist.lca.data[my.index, ] 
+panelist.lca.test.data<-panelist.lca.data[-my.index, ]
+
+# choose relevant categorical variables 
+my.vars.1 <- cbind(household_income,household_size,type_of_residence,household_composition,age_and_presence_of_children,female_head_age_1,male_head_age_1,female_head_employment_1,male_head_employment_1)~1
+
+my.aic <- c(0,0,0,0,0,0,0,0,0,0) 
+panelist.lca <- list()
+
+for (i in 2:10){
+    panelist.lca<- poLCA(my.vars.1, panelist.lca.train.data, nclass = i, nrep = 10,    verbose = FALSE) 
+print(my.aic <- panelist.lca$aic)}
+
+
+# from AIC results above, we perform scree plot 
+my.aic <- c(1010560,942957.9,894243.7,875960.9,860452.1,852151.5,846096.9,843577.5,
+            837989.8)
+
+# scree plot 
+class <- c(2,3,4,5,6,7,8,9,10) 
+plot(x=class, y=my.aic, type="o", xlim=c(2,10), xlab="number of classes", ylab="AIC",main = "Scree Plot")
+
+# Choose 4 clusters according to the scree plot. 
+
+# set seed 
+set.seed(123) 
+# plot 
+panelist.lca.4<-poLCA(my.vars.1, panelist.lca.train.data, nclass=4, nrep=50, graph=TRUE, verbose=FALSE)
+```
+
+Class1: Household income: 
+```{r}
+panelist.lca.4
+```
+
+```{r}
+#Holdout Validation & Commentary
+# set seed 
+set.seed(123) 
+
+# plot 
+panelist.lca.4.test <- poLCA(my.vars.1, panelist.lca.test.data, nclass=4, nrep=50, probs.start = panelist.lca.4$probs.start, graphs=FALSE, verbose = FALSE) 
+
+panelist.lca.4.test
+```
+
+```{r}
+# Combine train and holdout together to perform the LCA. 
+# set seed 
+set.seed(123) 
+
+# plot 
+panelist.lca.4.all <- poLCA(my.vars.1, panelist.lca.data, nclass=4, nrep=50,  graphs=FALSE, verbose = FALSE) 
+
+panelist.lca.4.all
+```
+```{r}
+lca.class.result <- panelist.lca.4.all$predclass
+length(lca.class.result)
+
+lca.class.result <- cbind(Household_Code = panelists_2012$household_code,LCA_Result = lca.class.result)
+dim(lca.class.result)
+
+lca.class.result.graph <- cbind(panelists_2012,LCA_Result = lca.class.result)
+
+write.csv(lca.class.result,file=paste(datapath,"panelist_lca.csv",sep="/"),row.names = F,quote=F)
+
+write.csv(lca.class.result.graph,file=paste(datapath,"panelist_lca_graph.csv",sep="/"),row.names = F,quote=F)
+
+```
+
+
+# Read purchases dataset
+```{r}
+purchases_2012 <- read.delim(file=paste(datapath,'purchases_2012.tsv',sep='/'),
+                        header=TRUE, sep = "\t")
+head(purchases_2012)
+names(purchases_2012)
+dim(purchases_2012)
+```
+
+```{r}
+trips_2012 <- read.delim(file=paste(datapath,'trips_2012.tsv',sep='/'),
+                        header=TRUE, sep = "\t")
+head(trips_2012)
+names(trips_2012)
+dim(trips_2012)
+```
+
+# Joint trips with purchases: 
+```{r}
+trip_purchase_2012 <- merge(x = trips_2012, y = purchases_2012, by = "trip_code_uc", all = TRUE)
+
+head(trip_purchase_2012)
+```
+
+
+# Upload the data from Products: 
+```{r}
+products <- read.delim(file=paste(datapath,'products.tsv',sep='/'), fill= TRUE,
+                        header=TRUE, sep = "\t", row.names= NULL)
+head(products)
+col.names <- colnames(products)
+col.names
+
+# Delete the 12th column 
+products <- products[,-12]
+head(products)
+dim(products)
+
+colnames(products) <- col.names[-1]
+head(products)
+dim(products)
+
+products.yogurt <- products[products$product_group_descr == 'YOGURT',]
+head(products.yogurt)
+dim(products.yogurt)
+```
+
+
+```{r}
+products_extra_2012 <- read.delim(file=paste(datapath,'products_extra_2012.tsv',sep='/'),
+                        header=TRUE, sep = "\t")
+head(products_extra_2012)
+names(products_extra_2012)
+dim(products_extra_2012)
+
+products.yogurt.extra <- products_extra_2012[products_extra_2012$product_descr=='YOGURT',]
+head(products.yogurt.extra)
+names(products.yogurt.extra)
+dim(products.yogurt.extra)
+```
+
+# Union product and product_extra table
+```{r}
+products.total <- merge(x = products.yogurt, y = products.yogurt.extra, by = "upc", all = TRUE)
+
+head(products.total)
+dim(products.total)
+
+# Columns could be deleted: 
+# 4.product_module_code: 3603
+# 5.product_module_descr: YOGURT-REFRIGERATED
+# 6.product_group_code: 2510 
+# 7.product_group_descr: YOGURT
+# 8. "department_code":3 
+# 9. "department_descr":Dairy
+# 18. "panel_year":2012 
+# 21. "form_code":NA 
+# 22. "form_descr"
+# 23. "formula_code"
+# 24. "formula_descr"
+# 25: "container_code"
+# 26: "container_descr" 
+# 27: "salt_content_code"
+# 28: "salt_content_descr" 
+# 33: "product_code"
+# 35: "variety_code"
+# 36: "variety_descr"
+# 41: "common_consumer_name_code"
+# 42: "common_consumer_name_descr" 
+# 43: "strength_code"
+# 44: "strength_descr" 
+# 45: "scent_code"
+# 46: "scent_descr"
+# 47: "dosage_code"
+# 48: "dosage_descr"
+# 49: "gender_code"
+# 50: "gender_descr"
+# 51: "target_skin_condition_code"
+# 52: "target_skin_condition_descr"
+# 53: "use_code"
+# 54: "use_descr"
+# 55: "size2_code" 
+# 56: "size2_amount"
+# 57: "size2_units"
+                                          
+products.total <- products.total[,-c(4:9,18,21:28,33,35:36,41:57)]
+head(products.total)
+dim(products.total)
+```
+
+```{r}
+# Inner join trip_purchase_2012 with products_extra_2012
+final.table_1 <- join(trip_purchase_2012, products_extra_2012, type = "inner", by = "upc")
+
+head(final.table_1)
+dim(final.table_1)
+names(final.table_1)
+
+# Columns that could be deleted: 
+# 6. "panel_year"
+# 16. "panel_year"  
+# 25: "salt_content_code"
+# 33: "variety_code"
+# 39: "common_consumer_name_code" 
+# 40: "common_consumer_name_descr" 
+# 41: "strength_code"
+# 42: "strength_descr"
+# 43: "scent_code"
+# 44: "scent_descr" 
+# 45: "dosage_code"
+# 46: "dosage_descr"
+# 47: "gender_code"
+# 48: "gender_descr"
+# 49: "target_skin_condition_code" 
+# 50: "target_skin_condition_descr"
+# 51: "use_code"
+# 52: "use_descr"
+
+final.table_1 <- final.table_1[,-c(6,16,25,33,39:52)]
+head(final.table_1)
+dim(final.table_1)
+```
+
+
+```{r}
+# Product Profile for Yogurt
+length(table(final.table_1$upc))  #8562
+length(table(final.table_1$flavor_code))  #776
+length(table(final.table_1$flavor_descr))  #843
+length(table(final.table_1$form_code)) #9  2260303 missing values
+```
+
+
+```{r}
+brand_variations <- read.delim(file=paste(datapath,'brand_variations.tsv',sep='/'),
+                        header=TRUE, sep = "\t")
+
+head(brand_variations)
+names(brand_variations)
+dim(brand_variations)
+```
+
+
+```{r}
+retailers <- read.delim(file=paste(datapath,'retailers.tsv',sep='/'),
+                        header=TRUE, sep = "\t")
+
+head(retailers)
+names(retailers)
+dim(retailers)
+```
+
+# Time Series Analysis
+```{r}
+YOGURT_2012 <- products_extra_2012[products_extra_2012$product_descr=="YOGURT",c(1:5,15:19)]
+
+YOGURT_purchase <- merge(trip_purchase_2012,YOGURT_2012,by="upc")
+
+# delete rows where the total price paid is 0 and there is no promotion
+YOGURT_purchase <- YOGURT_purchase[!(YOGURT_purchase$total_price_paid==0&YOGURT_purchase$deal_flag_uc==0),]
+
+YOGURT_purchase <- YOGURT_purchase[!(YOGURT_purchase$total_price_paid==0),]
+
+# calculate the unit price of yogurt
+YOGURT_purchase$unit_price <- YOGURT_purchase$total_price_paid/YOGURT_purchase$quantity
+
+
+# find the index for a specific column names
+grep("unit_price", colnames(YOGURT_purchase))
+grep("coupon_value", colnames(YOGURT_purchase))
+grep("deal_flag_uc",colnames(YOGURT_purchase))
+grep("retailer_code",colnames(YOGURT_purchase))
+grep("flavor_code",colnames(YOGURT_purchase))
+grep("type_code",colnames(YOGURT_purchase))
+
+# choose the selected columns
+yogurt_selected <- YOGURT_purchase[,c(4,5,8,9,24,13,14,5,17,20)]
+
+# look at the column names and their classes
+sapply(yogurt_selected,class)
+
+# change the deal_flag_uc, flavor_code, type_code into factor
+yogurt_selected$deal_flag_uc <- as.factor(yogurt_selected$deal_flag_uc)
+yogurt_selected$flavor_code <- as.factor(yogurt_selected$flavor_code)
+yogurt_selected$type_code <- as.factor(yogurt_selected$type_code)
+yogurt_selected$retailer_code <- as.factor(yogurt_selected$retailer_code)
+summary(yogurt_selected)
+
+
+household.purchase <- aggregate(YOGURT_purchase[,c(9,12)],by=list(YOGURT_purchase$household_code),FUN=sum)
+
+head(household.purchase)
+
+household.purchase.sorted <-household.purchase[order(-household.purchase$total_price_paid),]
+
+colnames(household.purchase.sorted)[1] <- "Household_Code"
+
+head(household.purchase.sorted)
+
+
+household.30763398<- panelists_2012[panelists_2012$household_code==30763398,]
+household.30763398
+
+purchase.30763398<- YOGURT_purchase[YOGURT_purchase$household_code==30763398,]
+which.max(table(purchase.30763398$type_descr))
+which.max(table(purchase.30763398$flavor_descr))
+```
+
+
+# analyze the clusters
+```{r}
+panelist_lca <- read.csv(paste(datapath,"panelist_lca.csv",sep='/'),header=TRUE)
+
+cluster.purchase<- merge(panelist_lca,household.purchase.sorted,by="Household_Code")
+
+cluster.purchase.sorted <- cluster.purchase[order(-cluster.purchase$total_price_paid),]
+
+top.purchase <- cluster.purchase.sorted
+
+table(top.purchase$LCA_Result)
+
+# The first and the second cluster purchased the most yogurt. 
+
+```
+
+
+# Time Series Analysis
+```{r}
+purchase.timesorted <- YOGURT_purchase[order(YOGURT_purchase$purchase_date),]
+head(purchase.timesorted)
+names(purchase.timesorted)
+
+timebased.30763398<- purchase.timesorted[purchase.timesorted$household_code==30763398,]
+timebased.30763398
+
+x <- as.POSIXct(timebased.30763398$purchase_date)
+
+mo <- strftime(x, "%m")
+
+yr <- strftime(x, "%Y")
+
+dd <- data.frame(mo, yr,quantity=timebased.30763398$quantity,total_paid=timebased.30763398$total_price_paid)
+
+dd.agg <- aggregate(quantity ~ mo + yr, dd, FUN = sum)
+dd.agg
+
+library(plotly)
+ggplot(data=dd.agg,mapping=aes(x=mo,y=quantity))+geom_point()+geom_line()
+# dd.agg$date <- as.POSIXct(paste(dd.agg$yr, dd.agg$mo, "01", sep = "-"))
+
+
+# Total sales aggregate by different periods. 
+# Daily Data
+period.purchase.daily <- aggregate(YOGURT_purchase[,c(9,11,12,13)],by=list(YOGURT_purchase$purchase_date),FUN=sum)
+
+dim(period.purchase.daily)  # 364, 5
+colnames(period.purchase.daily)[1] <- "date"
+head(period.purchase.daily)
+
+library(xts)
+library(chron)
+library(epitools)
+library(TSA)
+library(tseries)
+library(forecast)
+library(zoo)
+
+# Clean the data for daily and weekly in xts format: 
+temp.daily.time <- as.POSIXct(as.character(period.purchase.daily$date))
+
+period.quantity.daily.xts <- xts(x=as.numeric(period.purchase.daily$quantity), order.by=temp.daily.time) 
+period.quantity.weekly.xts <- apply.weekly(xts(period.quantity.daily.xts),mean)
+
+
+# Quantity plot: 
+plot.ts(period.quantity.daily.xts)
+plot.ts(period.quantity.weekly.xts)
+tsdisplay(period.quantity.daily.xts)
+tsdisplay(period.quantity.weekly.xts)
+
+
+# Train and holdout split: 
+# daily: train dataset: Jan to Nov, test dataset: Dec
+# monthly: train dataset: Jan to Nov, test dataset: Dec
+# Quantity: 
+quantity.daily.train <- period.quantity.daily.xts[1:335,]
+quantity.daily.test <- period.quantity.daily.xts[336:364,]
+quantity.weekly.train <- period.quantity.weekly.xts[1:48,]
+quantity.weekly.test <- period.quantity.weekly.xts[49:53,]
+
+# total_spent
+total_spent.daily.train <- period.total_spent.daily.xts[1:335,]
+total_spent.daily.test <- period.total_spent.daily.xts[336:364,]
+total_spent.weekly.train <- period.total_spent.weekly.xts[1:48,]
+total_spent.weekly.test <- period.total_spent.weekly.xts[49:53,]
+
+# total_price_paid
+total_price_paid.daily.train <- period.total_price_paid.daily.xts[1:335,]
+total_price_paid.daily.test <- period.total_price_paid.daily.xts[336:364,]
+total_price_paid.weekly.train <- period.total_price_paid.weekly.xts[1:48,]
+total_price_paid.weekly.test <- period.total_price_paid.weekly.xts[49:53,]
+
+# coupon_value
+coupon_value.daily.train <- period.coupon_value.daily.xts[1:335,]
+coupon_value.daily.test <- period.coupon_value.daily.xts[336:364,]
+coupon_value.weekly.train <- period.coupon_value.weekly.xts[1:48,]
+coupon_value.weekly.test <- period.coupon_value.weekly.xts[49:53,]
+
+
+
+# Prediction: 
+# ARIMA 
+# Quantity: 
+quantity_pred.dec = list()
+quantity_pred.weekly.dec = list()
+
+# Daily Prediction
+arima.quantity.daily <- auto.arima(ts(quantity.daily.train), allowdrift = FALSE, stepwise = FALSE, approximation = FALSE)
+
+summary(arima.quantity.daily)
+
+acf(arima.quantity.daily$residuals,lag=300)
+
+
+(quantity_pred.dec$arima <- forecast(arima.quantity.daily,h=29)$mean)
+
+quantity_pred.dec.arima <- forecast(arima.quantity.daily,29)
+
+plot(quantity_pred.dec.arima)
+lines(x=c(336:364), y = quantity.daily.test, col = "red") 
+
+# Weekly Prediction
+arima.quantity.weekly <- auto.arima(ts(quantity.weekly.train), allowdrift = FALSE, stepwise = FALSE, approximation = FALSE)
+
+summary(arima.quantity.weekly)
+
+acf(arima.quantity.weekly$residuals,lag=300)
+
+(quantity_pred.weekly.dec$arima <- forecast(arima.quantity.weekly,h=5)$mean)
+
+quantity_pred.weekly.dec.arima <- forecast(arima.quantity.weekly,5)
+
+plot(quantity_pred.weekly.dec.arima)
+lines(x=c(49:53), y = quantity.weekly.test, col = "red") 
+
+# SARIMA
+# Quantity
+# Daily Predition
+sarima.quantity.daily <- auto.arima(ts(quantity.daily.train, frequency = 52), allowdrift = FALSE)
+
+summary(sarima.quantity.daily)
+
+acf(sarima.quantity.daily$residuals, lag = 300)
+
+(quantity_pred.dec$sarima <- forecast(sarima.quantity.daily, h=29)$mean)
+
+quantity_pred.dec.sarima <- forecast(sarima.quantity.daily,29)
+
+plot(quantity_pred.dec.sarima)
+#lines(x=c(7:8), y = Beijing.Holdout.monthly.df$values, col = "red")
+
+# Weekly Prediction
+sarima.quantity.weekly <- auto.arima(ts(quantity.weekly.train, frequency = 52), allowdrift = FALSE)
+
+summary(sarima.quantity.weekly)
+
+acf(sarima.quantity.weekly$residuals, lag = 300)
+
+(quantity_pred.weekly.dec$sarima <- forecast(sarima.quantity.weekly, h=5)$mean)
+
+quantity_pred.weekly.dec.sarima <- forecast(sarima.quantity.weekly,5)
+
+plot(quantity_pred.weekly.dec.sarima)
+#lines(x=c(7:8), y = Beijing.Holdout.monthly.df$values, col = "red")
+
+
+
+# GARCH
+# Quantity
+# Daily Prediction
+garch.quantity.daily <- garch(quantity.daily.train)
+summary(garch.quantity.daily)
+
+(quantity_pred.dec$garch <- (predict(garch.quantity.daily, n.ahead=29)[2:30,1]))
+
+matplot(x = 1:364, y=c(as.numeric(quantity.daily.train), quantity_pred.dec$garch), xlab = "Month", ylab = "Quantity", col=c("black", "blue"), type = "l")
+        lines(x = c(336:364), y = quantity.daily.test, col = "red")     
+
+acf(residuals(garch.quantity.daily)[-1], lag = 300)
+
+
+# Weekly Prediction
+garch.quantity.weekly <- garch(quantity.weekly.train)
+summary(garch.quantity.weekly)
+
+(quantity_pred.weekly.dec$garch <- (predict(garch.quantity.weekly, n.ahead=5)[2:6,1]))
+
+matplot(x = 1:53, y=c(as.numeric(quantity.weekly.train), quantity_pred.weekly.dec$garch), xlab = "Week", ylab = "Quantity", col=c("black", "blue"), type = "l")
+lines(x = c(49:53), y = quantity.weekly.test, col = "red")     
+
+acf(residuals(garch.quantity.weekly)[-1], lag = 300)
+
+# Daily Prediction of Quantity
+# Compare SMAPE of different models: SARIMA is the best 
+smape <- function(fitted, actual) {
+  return(2*mean(abs(fitted - actual) / (abs(fitted) + abs(actual))))
+}
+
+(smape.quantity_pred.dec <- mapply(smape, quantity_pred.dec, list(quantity.daily.test)))
+
+smape.quantity_pred.dec[which.min(smape.quantity_pred.dec)]
+
+
+# Weekly Prediction of Quantity
+# Compare SMAPE of different models: ARIMA is the best 
+(smape.quantity_pred.weekly.dec <- mapply(smape, quantity_pred.weekly.dec, list(quantity.weekly.test)))
+
+smape.quantity_pred.weekly.dec[which.min(smape.quantity_pred.weekly.dec)]
+
+
+# Daily Prediction of Quantity
+#Compare MSE of different models: SARIMA is the best 
+mse <- function(fitted,actual){
+    return(mean((fitted-actual)^2))
+}
+(mse.quantity_pred.dec <- mapply(mse,quantity_pred.dec,list(quantity.daily.test)))
+mse.quantity_pred.dec[which.min(mse.quantity_pred.dec)]
+
+# Weekly Prediction of Quantity: ARIMA is the best 
+(mse.quantity_pred.weekly.dec <- mapply(mse,quantity_pred.weekly.dec,list(quantity.weekly.test)))
+mse.quantity_pred.weekly.dec[which.min(mse.quantity_pred.weekly.dec)]
+```
+
+
+# Predict the quantity for the greek yogurt
+```{r}
+# Total sales aggregate by different periods. 
+# Daily Data
+greek_purchase <- YOGURT_purchase[YOGURT_purchase$style_descr=='GREEK',]
+
+greek.daily <- aggregate(greek_purchase[,11],by=list(greek_purchase$purchase_date),FUN=sum)
+
+dim(greek.daily)  # 364, 2
+colnames(greek.daily) <- c("date","quantity")
+head(greek.daily)
+
+
+# Clean the data for daily and weekly in xts format: 
+greek.daily.xts <- xts(x=as.numeric(greek.daily$quantity), order.by=temp.daily.time) 
+greek.weekly.xts <- apply.weekly(xts(greek.daily.xts),mean)
+
+
+# Quantity plot: 
+plot.ts(greek.daily.xts)
+plot.ts(greek.weekly.xts)
+tsdisplay(greek.daily.xts)
+tsdisplay(greek.weekly.xts)
+
+
+# Train and holdout split: 
+# daily: train dataset: Jan to Nov, test dataset: Dec
+# monthly: train dataset: Jan to Nov, test dataset: Dec
+# Quantity: 
+greek.daily.train <- greek.daily.xts[1:335,]
+greek.daily.test <- greek.daily.xts[336:364,]
+greek.weekly.train <- greek.weekly.xts[1:48,]
+greek.weekly.test <- greek.weekly.xts[49:53,]
+
+
+
+# Prediction: 
+# ARIMA 
+# Quantity: 
+greek.daily.dec = list()
+greek.weekly.dec = list()
+
+# Daily Prediction
+arima.greek.daily.pred <- auto.arima(ts(greek.daily.train), allowdrift = FALSE, stepwise = FALSE, approximation = FALSE)
+
+summary(arima.greek.daily.pred)
+
+acf(arima.greek.daily.pred$residuals,lag=300)
+
+(greek.daily.dec$arima <- forecast(arima.greek.daily.pred,h=29)$mean)
+
+greek.daily.dec.arima <- forecast(arima.greek.daily.pred,29)
+
+plot(greek.daily.dec.arima)
+lines(x=c(336:364), y = greek.daily.test, col = "red") 
+
+
+# Weekly Prediction
+arima.greek.weekly.pred <- auto.arima(ts(greek.weekly.train), allowdrift = FALSE, stepwise = FALSE, approximation = FALSE)
+
+summary(arima.greek.weekly.pred)
+
+acf(arima.greek.weekly.pred$residuals,lag=300)
+
+(greek.weekly.dec$arima <- forecast(arima.greek.weekly.pred,h=5)$mean)
+
+greek.weekly.dec.arima <- forecast(arima.greek.weekly.pred,5)
+
+plot(greek.weekly.dec.arima)
+lines(x=c(49:53), y = greek.weekly.test, col = "red") 
+
+
+# SARIMA
+# Quantity
+# Daily Predition
+sarima.greek.daily.pred <- auto.arima(ts(greek.daily.train, frequency = 52), allowdrift = FALSE)
+
+summary(sarima.greek.daily.pred)
+
+acf(sarima.greek.daily.pred$residuals, lag = 300)
+
+(greek.daily.dec$sarima <- forecast(sarima.greek.daily.pred, h=29)$mean)
+
+greek.daily.dec.sarima <- forecast(sarima.greek.daily.pred,29)
+
+plot(greek.daily.dec.sarima)
+#lines(x=c(7:8), y = Beijing.Holdout.monthly.df$values, col = "red")
+
+# Weekly Prediction
+sarima.greek.weekly.pred <- auto.arima(ts(greek.weekly.train, frequency = 52), allowdrift = FALSE)
+
+summary(sarima.greek.weekly.pred)
+
+acf(sarima.greek.weekly.pred$residuals, lag = 300)
+
+(greek.weekly.dec$sarima <- forecast(sarima.greek.weekly.pred, h=5)$mean)
+
+greek.weekly.dec.sarima <- forecast(sarima.greek.weekly.pred,5)
+
+plot(greek.weekly.dec.sarima)
+#lines(x=c(7:8), y = Beijing.Holdout.monthly.df$values, col = "red")
+
+
+
+# GARCH
+# Quantity
+# Daily Prediction
+garch.greek.daily.pred <- garch(greek.daily.train)
+summary(garch.greek.daily.pred)
+
+(greek.daily.dec$garch <- (predict(garch.greek.daily.pred, n.ahead=29)[2:30,1]))
+
+matplot(x = 1:364, y=c(as.numeric(greek.daily.train), greek.daily.dec$garch), xlab = "Daily", ylab = "Quantity", col=c("black", "blue"), type = "l")
+lines(x = c(336:364), y = greek.daily.test, col = "red")     
+
+acf(residuals(garch.greek.daily.pred)[-1], lag = 300)
+
+
+# Weekly Prediction
+garch.greek.weekly.pred <- garch(greek.weekly.train)
+summary(garch.greek.weekly.pred)
+
+(greek.weekly.dec$garch <- (predict(garch.greek.weekly.pred, n.ahead=5)[2:6,1]))
+
+matplot(x = 1:53, y=c(as.numeric(greek.weekly.train), greek.weekly.dec$garch), xlab = "Week", ylab = "Quantity", col=c("black", "blue"), type = "l")
+lines(x = c(49:53), y = greek.weekly.test, col = "red")     
+
+acf(residuals(garch.greek.weekly.pred)[-1], lag = 300)
+
+
+# SMAPE: 
+# Daily Prediction of Quantity of Greek Yogurt: ARIMA is best 
+(smape.greek.daily.dec <- mapply(smape, greek.daily.dec, list(greek.daily.test)))
+smape.greek.daily.dec[which.min(smape.greek.daily.dec)]
+# Weekly Prediction of Quantity of Greek Yogurt: ARIMA is best 
+(smape.greek.weekly.dec <- mapply(smape, greek.weekly.dec, list(greek.weekly.test)))
+smape.greek.weekly.dec[which.min(smape.greek.weekly.dec)]
+
+# MSE
+# Daily Prediction of Quantity of Greek Yogurt: SARIMA is best 
+(mse.greek.daily.dec <- mapply(mse,greek.daily.dec,list(greek.daily.test)))
+mse.greek.daily.dec[which.min(mse.greek.daily.dec)]
+# Weekly Prediction of Quantity: ARIMA is the best 
+(mse.greek.weekly.dec <- mapply(mse,greek.weekly.dec,list(greek.weekly.test)))
+mse.greek.weekly.dec[which.min(mse.greek.weekly.dec)]
+```
+
+
+
+# Predict the quantity for the regular yogurt
+```{r}
+# Total sales aggregate by different periods. 
+# Daily Data
+regular_purchase <- YOGURT_purchase[YOGURT_purchase$style_descr=='REGULAR',]
+regular.daily <- aggregate(regular_purchase[,11],by=list(regular_purchase$purchase_date),FUN=sum)
+
+dim(regular.daily)  # 364, 2
+colnames(regular.daily) <- c("date","quantity")
+head(regular.daily)
+
+
+# Clean the data for daily and weekly in xts format: 
+regular.daily.xts <- xts(x=as.numeric(regular.daily$quantity), order.by=temp.daily.time) 
+regular.weekly.xts <- apply.weekly(xts(regular.daily.xts),mean)
+
+
+# Quantity plot: 
+plot.ts(regular.daily.xts)
+plot.ts(regular.weekly.xts)
+tsdisplay(regular.daily.xts)
+tsdisplay(regular.weekly.xts)
+
+
+# Train and holdout split: 
+# daily: train dataset: Jan to Nov, test dataset: Dec
+# monthly: train dataset: Jan to Nov, test dataset: Dec
+# Quantity: 
+regular.daily.train <- regular.daily.xts[1:335,]
+regular.daily.test <- regular.daily.xts[336:364,]
+regular.weekly.train <- regular.weekly.xts[1:48,]
+regular.weekly.test <- regular.weekly.xts[49:53,]
+
+
+
+# Prediction: 
+# ARIMA 
+# Quantity: 
+regular.daily.dec = list()
+regular.weekly.dec = list()
+
+# Daily Prediction
+arima.regular.daily.pred <- auto.arima(ts(regular.daily.train), allowdrift = FALSE, stepwise = FALSE, approximation = FALSE)
+
+summary(arima.regular.daily.pred)
+
+acf(arima.regular.daily.pred$residuals,lag=300)
+
+(regular.daily.dec$arima <- forecast(arima.regular.daily.pred,h=29)$mean)
+
+regular.daily.dec.arima <- forecast(arima.regular.daily.pred,29)
+
+plot(regular.daily.dec.arima)
+lines(x=c(336:364), y = regular.daily.test, col = "red") 
+
+
+# Weekly Prediction
+arima.regular.weekly.pred <- auto.arima(ts(regular.weekly.train), allowdrift = FALSE, stepwise = FALSE, approximation = FALSE)
+
+summary(arima.regular.weekly.pred)
+
+acf(arima.regular.weekly.pred$residuals,lag=300)
+
+(regular.weekly.dec$arima <- forecast(arima.regular.weekly.pred,h=5)$mean)
+
+regular.weekly.dec.arima <- forecast(arima.regular.weekly.pred,5)
+
+plot(regular.weekly.dec.arima)
+lines(x=c(49:53), y = regular.weekly.test, col = "red") 
+
+
+# SARIMA
+# Quantity
+# Daily Predition
+sarima.regular.daily.pred <- auto.arima(ts(regular.daily.train, frequency = 52), allowdrift = FALSE)
+
+summary(sarima.regular.daily.pred)
+
+acf(sarima.regular.daily.pred$residuals, lag = 300)
+
+(regular.daily.dec$sarima <- forecast(sarima.regular.daily.pred, h=29)$mean)
+
+regular.daily.dec.sarima <- forecast(sarima.regular.daily.pred,29)
+
+plot(regular.daily.dec.sarima)
+#lines(x=c(7:8), y = Beijing.Holdout.monthly.df$values, col = "red")
+
+# Weekly Prediction
+sarima.greek.weekly.pred <- auto.arima(ts(greek.weekly.train, frequency = 52), allowdrift = FALSE)
+
+summary(sarima.greek.weekly.pred)
+
+acf(sarima.greek.weekly.pred$residuals, lag = 300)
+
+(greek.weekly.dec$sarima <- forecast(sarima.greek.weekly.pred, h=5)$mean)
+
+greek.weekly.dec.sarima <- forecast(sarima.greek.weekly.pred,5)
+
+plot(greek.weekly.dec.sarima)
+#lines(x=c(7:8), y = Beijing.Holdout.monthly.df$values, col = "red")
+
+
+
+# GARCH
+# Quantity
+# Daily Prediction
+garch.regular.daily.pred <- garch(regular.daily.train)
+summary(garch.regular.daily.pred)
+
+(regular.daily.dec$garch <- (predict(garch.regular.daily.pred, n.ahead=29)[2:30,1]))
+
+matplot(x = 1:364, y=c(as.numeric(regular.daily.train), regular.daily.dec$garch), xlab = "Daily", ylab = "Quantity", col=c("black", "blue"), type = "l")
+lines(x = c(336:364), y = regular.daily.test, col = "red")     
+
+acf(residuals(garch.regular.daily.pred)[-1], lag = 300)
+
+
+# Weekly Prediction
+garch.regular.weekly.pred <- garch(regular.weekly.train)
+summary(garch.greek.weekly.pred)
+
+(greek.weekly.dec$garch <- (predict(garch.greek.weekly.pred, n.ahead=5)[2:6,1]))
+
+matplot(x = 1:53, y=c(as.numeric(greek.weekly.train), greek.weekly.dec$garch), xlab = "Week", ylab = "Quantity", col=c("black", "blue"), type = "l")
+lines(x = c(49:53), y = greek.weekly.test, col = "red")     
+
+acf(residuals(garch.greek.weekly.pred)[-1], lag = 300)
+
+
+# SMAPE: 
+# Daily Prediction of Quantity of Greek Yogurt: SARIMA is best 
+(smape.regular.daily.dec <- mapply(smape, regular.daily.dec, list(regular.daily.test)))
+smape.regular.daily.dec[which.min(smape.regular.daily.dec)]
+# Weekly Prediction of Quantity of Greek Yogurt: ARIMA is best 
+(smape.regular.weekly.dec <- mapply(smape, regular.weekly.dec, list(regular.weekly.test)))
+smape.regular.weekly.dec[which.min(smape.regular.weekly.dec)]
+
+# MSE
+# Daily Prediction of Quantity of Greek Yogurt: SARIMA is best 
+(mse.regular.daily.dec <- mapply(mse,regular.daily.dec,list(regular.daily.test)))
+mse.regular.daily.dec[which.min(mse.regular.daily.dec)]
+# Weekly Prediction of Quantity: ARIMA is the best 
+(mse.regular.weekly.dec <- mapply(mse,regular.weekly.dec,list(regular.weekly.test)))
+mse.regular.weekly.dec[which.min(mse.regular.weekly.dec)]
+```
