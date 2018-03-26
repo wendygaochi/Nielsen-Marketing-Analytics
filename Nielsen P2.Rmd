@@ -1,0 +1,356 @@
+---
+title: "Nielsen Part2"
+author: "Weijie Gao"
+date: "31 May 2017"
+output: html_document
+---
+```{r}
+dataPath <- "C:/Users/AA/Google Drive/UChicago MscA_/Marketing Analytics/Course Project/Nielsen/2012/"
+product.data <- read.delim(file=paste(dataPath,'products_extra_2012.tsv',sep='/'),header=TRUE,sep="\t")
+
+panelists_2012 <- read.delim(file=paste(dataPath,'panelists_2012.tsv',sep='/'),header=TRUE,sep="\t")
+
+purchases_2012 <- read.delim(file=paste(dataPath,'purchases_2012.tsv',sep='/'),header=TRUE,sep="\t")
+
+trips_2012 <- read.delim(file=paste(dataPath,'trips_2012.tsv',sep='/'),header=TRUE,sep="\t")
+
+household_purchase <- merge(purchases_2012, trips_2012, by = "trip_code_uc")
+
+YOGURT_2012 <- product.data[product.data$product_descr=="YOGURT",c(1:5,15:19)]
+YOGURT_purchase <- merge(household_purchase,YOGURT_2012,by="upc")
+
+#dataPath <- "~/Documents/Marketing_project/latest"
+brand.data <- read.delim(file=paste(dataPath,'brand_variations.tsv',sep='/'),header=TRUE,sep="\t")
+product.data.latest <- read.delim(file=paste(dataPath,'products.tsv',sep='/'),header=FALSE,sep="\t")
+retailers.data <- read.delim(file=paste(dataPath,'retailers.tsv',sep='/'),header=TRUE,sep="\t")
+
+# delete rows where the total price paid is 0
+YOGURT_purchase <- YOGURT_purchase[!(YOGURT_purchase$total_price_paid==0),]
+# YOGURT_purchase <- YOGURT_purchase[!(YOGURT_purchase$total_price_paid==0&YOGURT_purchase$deal_flag_uc==0),]
+write.table(YOGURT_purchase, "YOGURT_purchase.csv", sep=",", na = "", row.names = FALSE)
+
+# Quantity and total price sold for different yogurt styles
+sales_style <- aggregate(YOGURT_purchase[,c(4,5)],by=list(YOGURT_purchase$style_descr),FUN=sum)
+sales_style.sorted <- sales_style[order(-sales_style$quantity),]
+colnames(sales_style.sorted)[1] <- "Style"
+write.table(sales_style.sorted, "sales_style.sorted.csv", sep=",", na = "", row.names = FALSE)
+
+# Quantity and total price sold for different yogurt types
+sales_type <- aggregate(YOGURT_purchase[,c(4,5)],by=list(YOGURT_purchase$type_descr),FUN=sum)
+sales_type.sorted <- sales_type[order(-sales_type$quantity),]
+colnames(sales_type.sorted)[1] <- "Type"
+write.table(sales_type.sorted, "sales_type.sorted.csv", sep=",", na = "", row.names = FALSE)
+
+# Quantity and total price sold for different yogurt flavor
+sales_flavor <- aggregate(YOGURT_purchase[,c(4,5)],by=list(YOGURT_purchase$flavor_descr),FUN=sum)
+sales_flavor.sorted <- sales_flavor[order(-sales_flavor$quantity),]
+colnames(sales_flavor.sorted )[1] <- "Flavor"
+
+# find the index for a specific column names
+grep("unit_price", colnames(YOGURT_purchase))
+grep("coupon_value", colnames(YOGURT_purchase))
+grep("deal_flag_uc",colnames(YOGURT_purchase))
+grep("retailer_code",colnames(YOGURT_purchase))
+grep("flavor_code",colnames(YOGURT_purchase))
+grep("type_code",colnames(YOGURT_purchase))
+
+# choose the selected columns
+yogurt_selected <- YOGURT_purchase[,c(4,5,8,9,6,7,10,17,20)]
+
+# look at the column names and their classes
+sapply(yogurt_selected,class)
+
+# change the deal_flag_uc, flavor_code, type_code into factor
+yogurt_selected$deal_flag_uc <- as.factor(yogurt_selected$deal_flag_uc)
+yogurt_selected$flavor_code <- as.factor(yogurt_selected$flavor_code)
+yogurt_selected$type_code <- as.factor(yogurt_selected$type_code)
+yogurt_selected$retailer_code <- as.factor(yogurt_selected$retailer_code)
+summary(yogurt_selected)
+
+```
+```{r}
+# Analysis of Promotion Effectiveness
+# divide the dataset into two sub dataset by ad_type
+sales_nonpro <- subset(YOGURT_purchase,deal_flag_uc==0)
+sales_pro <- subset(YOGURT_purchase,deal_flag_uc==1)
+
+#calculate the mean of sales with different deal_flag_uc
+mean(sales_nonpro$quantity)
+mean(sales_pro$quantity)
+```
+The mean of sales without promotion is about 1.96; the mean of sales with promotion is about 2.48. It looks like that the latter one is better. To find out how likely the conclusion is correct for the whole population, it is necessary to do statistical testing – two-sample t-test.
+```{r}
+par(mfrow = c(1,2))
+# histogram to explore the data distribution shapes
+hist(sales_nonpro$quantity,main='',xlab='sales with nature production theme ad',prob=T)
+hist(sales_pro$quantity,main='',xlab='sales with family health caring theme ad',prob=T)
+
+hist(log(sales_nonpro$quantity),main='',xlab='sales with nature production theme ad',prob=T)
+hist(log(sales_pro$quantity),main='',xlab='sales with family health caring theme ad',prob=T)
+
+t.test(log(sales_nonpro$quantity),log(sales_pro$quantity))
+```
+```{r}
+# aggregate the yogurt purchase data by different style
+style_aggregated <- aggregate(YOGURT_purchase[,c(4,5,6,7)],by=list(YOGURT_purchase$style_descr),FUN=sum)
+style_aggregated$unit_price <- style_aggregated$total_price_paid/style_aggregated$quantity
+head(style_aggregated)
+style_aggregated_sorted<- style_aggregated[order(-style_aggregated$quantity),]
+
+hist(style_aggregated_sorted$unit_price,main="",xlab="unit price",prob=T)
+hist(log(style_aggregated_sorted$unit_price),main="",xlab="unit price",prob=T,col="lightblue")
+
+hist(log(style_aggregated_sorted$quantity),main="",xlab="quantity",prob=T,col="lightblue")
+
+hist(log(style_aggregated_sorted$coupon_value),main="",xlab="quantity",prob=T,col="lightblue")
+
+log_quantity <- log(style_aggregated_sorted$quantity+0.0001)
+log_unit_price <- log(style_aggregated_sorted$unit_price+0.0001)
+log_coupon_value <- log(style_aggregated_sorted$coupon_value+0.0001)
+deal_flag_uc<- style_aggregated_sorted$deal_flag_uc
+
+m1 <- lm(log_quantity ~ log_unit_price+log_coupon_value,data=style_aggregated_sorted)
+summary(m1)
+m2 <- lm(log_quantity ~ log_unit_price+log_coupon_value+deal_flag_uc,data=style_aggregated_sorted)
+summary(m2)
+
+# Check the residuals assumption
+par(mfrow=c(2,2))
+plot(m2)
+
+# check the multicollinearity among the variables 
+install.packages("VIF")
+library(VIF)
+install.packages("faraway")
+library(faraway)
+vif(m2)
+
+install.packages("MCMCpack")
+require(MCMCpack)
+yogurt.mcmc <- MCMCregress(log_quantity1 ~ log_unit_price1 + log_coupon_value1,data=style_aggregated_sorted)
+summary(yogurt.mcmc)
+vif(yogurt.mcmc)
+
+yogurt.mcmc2 <- MCMCregress(log_quantity1~ log_unit_price1 + log_coupon_value1+yogurt.agg$deal_flag_uc,data=style_aggregated_sorted)
+summary(yogurt.mcmc2)
+vif(yogurt.mcmc2)
+```
+The VIF test value for each variable is close to 1, which means the multicollinearity is very low among these variables.Based on the above analysis, we can accept the regression result and construct the multi-linear model of sales as follows:
+log(Sales) = 6.344 -0.7884 * log(unit_price) + 0.4531* log(coupon_value) + 1.433e-05* deal_flag_uc
+```{r}
+PE.unit_price<- as.numeric(mean(yogurt.mcmc2[,2]) log(mean(YOGURT_purchase$unit_price))/log(mean(YOGURT_purchase$total_price_paid)))
+PE.unit_price
+```
+The PE indicates that 10% decrease in price will increase the sales by 3.7%, and vice verse.
+
+```{r}
+# Sales Driver Analysis and Price Elasticity Analysis for the GREEK yogurt
+x <- as.POSIXct(YOGURT_purchase$purchase_date)
+mo <- strftime(x, "%m")
+yr <- strftime(x, "%Y")
+dd <- data.frame(mo, yr, quantity=YOGURT_purchase$quantity,total_paid=YOGURT_purchase$total_price_paid,
+                 coupon_value=YOGURT_purchase$coupon_value,deal_flag_uc=YOGURT_purchase$deal_flag_uc,style_descr=YOGURT_purchase$style_descr,type_descr=YOGURT_purchase$type_descr,flavor_descr=YOGURT_purchase$flavor_descr)
+
+dd.GREEK <- dd[dd$style_descr=="GREEK",c(1:9)]
+
+quantity.agg <- aggregate(quantity ~ mo + yr, dd.GREEK, FUN = sum)
+total_price_paid.agg <- aggregate(total_paid ~ mo + yr, dd.GREEK, FUN = sum)
+coupon_value.agg <- aggregate(coupon_value ~ mo + yr, dd.GREEK, FUN = sum)
+deal_flag_uc.agg <- aggregate(deal_flag_uc ~ mo + yr, dd.GREEK, FUN = sum)
+
+quantity <- as.data.frame(quantity.agg$quantity)
+coupon <- as.data.frame(coupon_value.agg$coupon_value)
+total_price <- as.data.frame(total_price_paid.agg$total_paid)
+deal <- as.data.frame(deal_flag_uc.agg$deal_flag_uc)
+GREEK.agg <- c(quantity,total_price,coupon,deal)
+GREEK.agg <- as.data.frame(GREEK.agg)
+GREEK.agg$unit_price <- GREEK.agg$total_price_paid.agg.total_paid/GREEK.agg$quantity.agg.quantity
+
+# YOGURT_Greek <- YOGURT_purchase[YOGURT_purchase$style_descr=="GREEK",c(4:7,18,21)]
+
+# YOGURT_Greek$unit_price <- YOGURT_Greek$total_price_paid/YOGURT_Greek$quantity
+
+hist(GREEK.agg$unit_price,main="",xlab="unit price",prob=T,col="lightyellow")
+hist(log(GREEK.agg$unit_price),main="",xlab="unit price",prob=T,col="lightyellow")
+
+hist(GREEK.agg$coupon_value,main="",xlab="coupon_value",prob=T,col="lightyellow")
+hist(log(GREEK.agg$coupon_value),main="",xlab="coupon_value",prob=T,col="lightyellow")
+
+hist(GREEK.agg$quantity,main="",xlab="quantity",prob=T,col="lightyellow")
+hist(log(GREEK.agg$quantity),main="",xlab="quantity",prob=T,col="lightyellow")
+```
+
+```{r}
+log_quantity1 <- log(GREEK.agg$quantity+0.0001)
+log_unit_price1 <- log(GREEK.agg$unit_price+0.0001)
+log_coupon_value1 <- log(GREEK.agg$coupon_value+0.0001)
+
+ml1 <- lm(log_quantity1 ~ log_unit_price1+log_coupon_value1)
+summary(ml1)
+vif(ml1)
+
+ml2 <- lm(log_quantity1 ~ log_unit_price1 +log_coupon_value1+GREEK.agg$deal_flag_uc,data=GREEK.agg)
+summary(ml2)
+vif(ml2)
+```
+The VIF test value for each variable is close to 1, which means the multicollinearity is very low among these variables.Based on the above analysis, we can accept the regression result and construct the multi-linear model of sales as follows:
+log(Sales) = 9.308 -0.07257 * log(unit_price) + 0.1201* log(coupon_value) + 4.903e-05* deal_flag_uc
+
+```{r}
+PE.unit_price<- as.numeric(ml2$coefficients["log_unit_price1"]*log(mean(GREEK.agg$unit_price))/log(mean(GREEK.agg$total_price_paid.agg.total_paid)))
+PE.unit_price
+```
+The PE indicates that 10% decrease in price will increase the sales by 0.02%, and vice verse.
+
+Usually companies want to get higher profit rather than just higher sales quantity. So, how to set the optimal price for the new Greek yogurt to get the maximum profit based on the regression model above?
+To simplify the question, we can let the deal_flag_uc = 1, the unit_price = 1.531316 (mean value), and the coupon = 2503.361 (mean value).
+
+#### Optimal Pricing and Sales Prediction
+log(Sales) = 9.308 -0.07257 * log(price) + 0.1201* log(2503.361) + 4.903e-05* 1
+           = 10.24788 - 0.07257*log(price)
+exp(10.21695)-exp(10.21691)
+(Sales <- exp(10.24788 - 0.07257*log(price)))
+
+Assume the marginal cost(C) per unit of yogurt is 0.25*1.531316. We can calculate the profit (Y) by the following formula:
+Y = (price – C) * Sales Quantity
+= (price-0.382829) * exp(10.24788 - 0.07257*log(price))
+= (exp(10.24788)*x-10804.45)/1.075268*log(x)
+
+
+#### Optimal Coupon and Sales Prediction
+log(Sales) = 9.308 -0.07257 * log(1.531316) + 0.1201* log(coupon)
+           = 9.277076 + 0.1201* log(coupon)
+
+(Sales <- exp(9.277076 + 0.1201* log(coupon)))
+
+Assume the marginal cost(C) per unit of yogurt is 0.25*1.531316. We can calculate the profit (Y) by the following formula:
+Y = (1.531316 – C) * Sales Quantity
+= (1.531316-0.382829) * exp(9.277076 + 0.1201* log(coupon))
+=  1.148496*exp(9.277076 + 0.1201* log(x))
+```{r}
+f <- function(x) 1.148496*exp(9.277076 + 0.1201* log(x))
+optimize(f,lower=2000,upper=3000,maximum=TRUE)
+
+```
+
+```{r}
+# Sales Driver Analysis and Price Elasticity Analysis for the REGULAR yogurt
+x <- as.POSIXct(YOGURT_purchase$purchase_date)
+mo <- strftime(x, "%m")
+yr <- strftime(x, "%Y")
+dd <- data.frame(mo, yr, quantity=YOGURT_purchase$quantity,total_paid=YOGURT_purchase$total_price_paid,
+                 coupon_value=YOGURT_purchase$coupon_value,deal_flag_uc=YOGURT_purchase$deal_flag_uc,style_descr=YOGURT_purchase$style_descr,type_descr=YOGURT_purchase$type_descr,flavor_descr=YOGURT_purchase$flavor_descr)
+
+dd.REGULAR <- dd[dd$style_descr=="REGULAR",c(1:9)]
+
+quantity.agg <- aggregate(quantity ~ mo + yr, dd.REGULAR, FUN = sum)
+total_price_paid.agg <- aggregate(total_paid ~ mo + yr, dd.REGULAR, FUN = sum)
+coupon_value.agg <- aggregate(coupon_value ~ mo + yr, dd.REGULAR, FUN = sum)
+deal_flag_uc.agg <- aggregate(deal_flag_uc ~ mo + yr, dd.REGULAR, FUN = sum)
+
+quantity <- as.data.frame(quantity.agg$quantity)
+coupon <- as.data.frame(coupon_value.agg$coupon_value)
+total_price <- as.data.frame(total_price_paid.agg$total_paid)
+deal <- as.data.frame(deal_flag_uc.agg$deal_flag_uc)
+REGULAR.agg <- c(quantity,total_price,coupon,deal)
+REGULAR.agg <- as.data.frame(REGULAR.agg)
+REGULAR.agg$unit_price <- REGULAR.agg$total_price_paid.agg.total_paid/REGULAR.agg$quantity.agg.quantity
+
+# YOGURT_Greek <- YOGURT_purchase[YOGURT_purchase$style_descr=="GREEK",c(4:7,18,21)]
+
+# YOGURT_Greek$unit_price <- YOGURT_Greek$total_price_paid/YOGURT_Greek$quantity
+
+hist(REGULAR.agg$unit_price,main="",xlab="unit price",prob=T,col="lightyellow")
+hist(log(REGULAR.agg$unit_price),main="",xlab="unit price",prob=T,col="lightyellow")
+
+hist(REGULAR.agg$coupon_value,main="",xlab="coupon_value",prob=T,col="lightyellow")
+hist(log(REGULAR.agg$coupon_value),main="",xlab="coupon_value",prob=T,col="lightyellow")
+
+hist(REGULAR.agg$quantity,main="",xlab="quantity",prob=T,col="lightyellow")
+hist(log(REGULAR.agg$quantity),main="",xlab="quantity",prob=T,col="lightyellow")
+```
+
+```{r}
+log_quantity2<- log(REGULAR.agg$quantity+0.0001)
+log_unit_price2<- log(REGULAR.agg$unit_price+0.0001)
+log_coupon_value2<- log(REGULAR.agg$coupon_value+0.0001)
+
+ml1<- lm(log_quantity2~ log_unit_price2+log_coupon_value1)
+summary(ml1)
+vif(ml1)
+
+ml2 <- lm(log_quantity2~ log_unit_price2+log_coupon_value2+REGULAR.agg$deal_flag_uc,data=REGULAR.agg)
+summary(ml2)
+vif(ml2)
+
+PE.unit_price<- as.numeric(ml1$coefficients["log_unit_price1"]*log(mean(GREEK.agg$unit_price))/log(mean(GREEK.agg$total_price_paid.agg.total_paid)))
+PE.unit_price
+```
+The PE indicates that 10% decrease in price will increase the sales by 2.8%, and vice verse.
+
+```{r}
+install.packages(c("lavaan", "semTools", "semPlot"))
+library(lavaan)
+library(semTools)
+library(semPlot)
+
+
+Model1 <- " quantity =~ coupon+promotion+unit_price"
+colnames(REGULAR.agg) <- c("quantity","total_price","coupon","promotion","unit_price")
+REGULAR.agg$quantity <- log(REGULAR.agg$quantity)
+REGULAR.agg$coupon <- log(REGULAR.agg$coupon)
+REGULAR.agg$promotion <- log(REGULAR.agg$promotion)
+REGULAR.agg$unit_price <- log(REGULAR.agg$unit_price)
+
+pies.fit.NH1 <- cfa(Model1, data=REGULAR.agg)
+summary(pies.fit.NH1, fit.measures=TRUE)
+
+sales.fit<- sem(Model1, data=REGULAR.agg)
+summary(sales.fit, fit.measures=TRUE)
+semPaths(sales.fit, what="est", fade=FALSE, residuals=FALSE,layout="tree",structural= TRUE,edge.label.cex=0.75)
+```
+
+```{r}
+# Aggregated household purchase 
+household.purchase <- aggregate(YOGURT_purchase[,c(4,5)],by=list(YOGURT_purchase$household_code),FUN=sum)
+household.purchase$total_price_paid
+household.purchase.sorted <- household.purchase[order(-household.purchase$total_price_paid),]
+colnames(household.purchase.sorted)[1] <- "Household_Code"
+head(household.purchase.sorted)
+write.table(household.purchase.sorted, "household.purchase.sorted.csv", sep=",", na = "", row.names = FALSE)
+
+# Analyze the household purchase and cluster information
+panelist_lca <- read.csv(paste(dataPath,"panelist_lca.csv",sep='/'),header=TRUE)
+cluster.purchase<- merge(panelist_lca,household.purchase.sorted,by="Household_Code")
+cluster.purchase.sorted <- cluster.purchase[order(-cluster.purchase$total_price_paid),]
+top.purchase <- cluster.purchase.sorted[1:10000,]
+table(top.purchase$LCA_Result)
+
+# subtract the information for the largest purchase amount household 
+household.30763398 <- panelists_2012[panelists_2012$household_code==30763398,]
+household.30763398
+
+purchase.30763398 <- YOGURT_purchase[YOGURT_purchase$household_code==30763398,]
+which.max(table(purchase.30763398$style_descr))
+which.max(table(purchase.30763398$type_descr))
+which.max(table(purchase.30763398$flavor_descr))
+
+purchase.timesorted <- yogurt_selected[order(yogurt_selected$purchase_date),]
+timebased.30763398<- purchase.timesorted[purchase.timesorted$household_code==30763398,]
+write.table(timebased.30763398, "timebased.30763398.csv", sep=",", na = "", row.names = FALSE)
+
+# Calculate and plot the monthly purchase quantity for household code 30763398
+x <- as.POSIXct(timebased.30763398$purchase_date)
+mo <- strftime(x, "%m")
+yr <- strftime(x, "%Y")
+dd <- data.frame(mo, yr, quantity=timebased.30763398$quantity,total_paid=timebased.30763398$total_price_paid)
+
+dd.agg <- aggregate(quantity ~ mo + yr, dd, FUN = sum)
+dd.agg
+install.packages("plotly")
+library(plotly)
+ggplot(data=dd.agg,mapping=aes(x=mo,y=quantity))+geom_point()+geom_line()
+# dd.agg$date <- as.POSIXct(paste(dd.agg$yr, dd.agg$mo, "01", sep = "-"))
+```
+
+
